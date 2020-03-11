@@ -1,6 +1,6 @@
 #!/bin/bash
 
-domains=( worklifebarometer.se worklifebarometer.com worklifebarometer.dk) # subdomain www. is included
+domains=( worklifebarometer.com worklifebarometer.se worklifebarometer.dk) # subdomain www. is included
 rsa_key_size=4096
 data_path="./data/certbot"
 email="tech@worklifebarometer.com" # Adding a valid address is strongly recommended
@@ -31,14 +31,14 @@ for domain in "${domains[@]}"; do
         echo "### Creating dummy certificate for [$domain]"
         path="/etc/letsencrypt/live/$domain"
         mkdir -p "$data_path/conf/live/$domain"
-        docker-compose run --rm --entrypoint "\
+        docker-compose run --rm --log-level ERROR --entrypoint "\
   openssl req -x509 -nodes -newkey rsa:1024 -days 1\
     -keyout '$path/privkey.pem' \
     -out '$path/fullchain.pem' \
-    -subj '/CN=localhost'" certbot
+    -subj '/CN=localhost'" certbot > /dev/null 2>&1
     done
 done
-
+echo
 
 echo "### Starting nginx ..."
 docker-compose up --force-recreate -d nginx
@@ -53,22 +53,24 @@ for domain in "${domains[@]}"; do
         docker-compose run --rm --entrypoint "\
   rm -Rf /etc/letsencrypt/live/$domain && \
   rm -Rf /etc/letsencrypt/archive/$domain && \
-  rm -Rf /etc/letsencrypt/renewal/$domain.conf" certbot
+  rm -Rf /etc/letsencrypt/renewal/$domain.conf" certbot > /dev/null 2>&1
     done
 done
 
 
-#Join $domains to -d args
+domain_args="$domain_args -d"
 echo "### Requesting Let's Encrypt certificate for [${domains[*]}]"
 for domain in "${domains[@]}"; do
     for (( n=1; n<=2; n++ )); do
-        if [ $n -ge 2 ]; then
-            domain="www.$domain"
+        if [ $n -le 1 ]; then
+            domain_args="$domain_args $domain,"
+        else
+            domain_args="${domain_args}www.$domain -d"
         fi
-        domain_args="$domain_args -d $domain"
     done
 done
-echo $domain_args
+domain_args=${domain_args%-*} # removes the last -d
+echo $domain_args # for debug only
 
 # Select appropriate email arg
 case "$email" in
